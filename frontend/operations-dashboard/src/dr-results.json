@@ -1,0 +1,123 @@
+{
+  "environment": "local kind cluster (3 nodes, 2 fake zones) on one laptop; synthetic probe traffic; NOT a cloud measurement",
+  "targets": {
+    "rto_s": 300,
+    "rpo_s": 60,
+    "note": "experimental POC targets, not commitments"
+  },
+  "results": {
+    "zone-failure": {
+      "scenario": "zone-failure",
+      "target_rto_s": 300,
+      "target_rpo_s": 60,
+      "write_outage_s": 50,
+      "write_failed_requests": 5,
+      "write_availability_pct_during_fault": 87.2,
+      "write_worst_latency_s": 4.0,
+      "read_worst_latency_s": 4.01,
+      "read_outage_s": 86,
+      "read_failed_requests": 13,
+      "read_availability_pct_during_fault": 66.7,
+      "orders_acknowledged": 83,
+      "acknowledged_orders_lost": 0,
+      "injected": "docker pause of one of two worker nodes (zone-b)",
+      "node_notready_detected_s": 47,
+      "capacity_restored_s": 93,
+      "pending_order_catchup_s": 0,
+      "rto_met": true,
+      "rpo_met": true,
+      "measured_at": "2026-11-13 14:31 UTC"
+    },
+    "db-crash": {
+      "scenario": "db-crash",
+      "target_rto_s": 300,
+      "target_rpo_s": 60,
+      "write_outage_s": 0,
+      "write_failed_requests": 0,
+      "write_availability_pct_during_fault": 100.0,
+      "write_worst_latency_s": 1.91,
+      "read_worst_latency_s": 0.01,
+      "read_outage_s": 0,
+      "read_failed_requests": 0,
+      "read_availability_pct_during_fault": 100.0,
+      "orders_acknowledged": 54,
+      "acknowledged_orders_lost": 0,
+      "injected": "kubectl delete pod postgres-0 --force --grace-period=0 (crash recovery from the persistent volume)",
+      "postgres_ready_s": 2,
+      "pending_order_catchup_s": 0,
+      "wal_archive_failures": 0,
+      "rto_met": true,
+      "rpo_met": true,
+      "measured_at": "2026-11-13 14:11 UTC"
+    },
+    "broker-outage": {
+      "scenario": "broker-outage",
+      "target_rto_s": 300,
+      "target_rpo_s": 60,
+      "write_outage_s": 0,
+      "write_failed_requests": 0,
+      "write_availability_pct_during_fault": 100.0,
+      "write_worst_latency_s": 0.14,
+      "read_worst_latency_s": 0.14,
+      "read_outage_s": 0,
+      "read_failed_requests": 0,
+      "read_availability_pct_during_fault": 100.0,
+      "orders_acknowledged": 138,
+      "acknowledged_orders_lost": 0,
+      "injected": "pubsub-emulator scaled to 0 for 60 s, then restored (+ topic re-creation, emulator-only)",
+      "outbox_events_waiting_at_peak": 30,
+      "outbox_events_still_unpublished": 0,
+      "pending_order_catchup_s": 1,
+      "broker_back_to_catchup_s": 63,
+      "rto_met": true,
+      "rpo_met": true,
+      "measured_at": "2026-11-13 14:52 UTC"
+    },
+    "pitr-restore": {
+      "scenario": "pitr-restore",
+      "injected": "production volume 'lost'; restore from base backup + frozen WAL archive into a scratch Postgres (3 disaster instants)",
+      "target_rto_s": 300,
+      "target_rpo_s": 60,
+      "base_backup_s": 4,
+      "archive_timeout_s": 30,
+      "runs": [
+        {
+          "disaster": 1,
+          "restore_s": 4,
+          "production_last_marker": 803,
+          "restored_last_marker": 778,
+          "rows_lost": 25,
+          "data_loss_window_s": 46,
+          "orders_in_production": 51018,
+          "orders_restored": 51018
+        },
+        {
+          "disaster": 2,
+          "restore_s": 3,
+          "production_last_marker": 818,
+          "restored_last_marker": 804,
+          "rows_lost": 14,
+          "data_loss_window_s": 15,
+          "orders_in_production": 51018,
+          "orders_restored": 51018
+        },
+        {
+          "disaster": 3,
+          "restore_s": 3,
+          "production_last_marker": 833,
+          "restored_last_marker": 832,
+          "rows_lost": 1,
+          "data_loss_window_s": 0,
+          "orders_in_production": 51018,
+          "orders_restored": 51018
+        }
+      ],
+      "worst_restore_s": 4,
+      "worst_data_loss_window_s": 46,
+      "worst_rows_lost": 25,
+      "rto_met": true,
+      "rpo_met": true,
+      "measured_at": "2026-11-13 14:47 UTC"
+    }
+  }
+}
