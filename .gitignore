@@ -1,0 +1,55 @@
+# --- Secrets & credentials (NEVER commit) ---
+*.pem
+*.key
+*.p12
+*.jks
+*-sa.json
+*service-account*.json
+*credentials*.json
+application_default_credentials.json
+.env
+.env.*
+!.env.example
+secrets/
+
+# --- Terraform ---
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*.auto.tfvars
+terraform.tfvars
+!terraform.tfvars.example
+
+# --- Java / Maven / Gradle ---
+target/
+build/
+.gradle/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# --- Node / React ---
+node_modules/
+dist/
+coverage/
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# --- Local runtime ---
+*.log
+/tmp/
+.phase1-report/
+
+# local run artifacts
+.run/
+
+# generated local credentials
+.run/identity-credentials.txt
