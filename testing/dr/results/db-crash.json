@@ -1,0 +1,21 @@
+{
+  "scenario": "db-crash",
+  "target_rto_s": 300,
+  "target_rpo_s": 60,
+  "write_outage_s": 0,
+  "write_failed_requests": 0,
+  "write_availability_pct_during_fault": 100.0,
+  "write_worst_latency_s": 1.91,
+  "read_worst_latency_s": 0.01,
+  "read_outage_s": 0,
+  "read_failed_requests": 0,
+  "read_availability_pct_during_fault": 100.0,
+  "orders_acknowledged": 54,
+  "acknowledged_orders_lost": 0,
+  "injected": "kubectl delete pod postgres-0 --force --grace-period=0 (crash recovery from the persistent volume)",
+  "postgres_ready_s": 2,
+  "pending_order_catchup_s": 0,
+  "wal_archive_failures": 0,
+  "rto_met": true,
+  "rpo_met": true
+}

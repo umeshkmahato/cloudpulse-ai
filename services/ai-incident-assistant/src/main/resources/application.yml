@@ -1,0 +1,39 @@
+server:
+  port: 8085
+  shutdown: graceful
+
+spring:
+  application:
+    name: ai-incident-assistant
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cloudpulse}
+    username: ${POSTGRES_USER:cloudpulse}
+    password: ${POSTGRES_PASSWORD}
+  flyway:
+    schemas: assistant
+    default-schema: assistant
+    create-schemas: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+cloudpulse:
+  assistant:
+    operations-base-url: ${OPERATIONS_BASE_URL:http://localhost:8083}
+    timeout-ms: 5000
+    # rule-based (default, deterministic, free) | vertex (optional LLM rewrite, output validated against evidence; UNVERIFIED until GCP access)
+    narrative-provider: ${ASSISTANT_PROVIDER:rule-based}
+    vertex:
+      project-id: ${GCP_PROJECT_ID:cloudpulse-ai-poc}
+      location: ${VERTEX_LOCATION:asia-south1}
+      model: ${VERTEX_MODEL:gemini-2.0-flash}

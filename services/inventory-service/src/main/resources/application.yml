@@ -1,0 +1,46 @@
+server:
+  port: 8082
+  shutdown: graceful
+
+spring:
+  application:
+    name: inventory-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cloudpulse}
+    username: ${POSTGRES_USER:cloudpulse}
+    password: ${POSTGRES_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: inventory
+  flyway:
+    schemas: inventory
+    default-schema: inventory
+    create-schemas: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+cloudpulse:
+  pubsub:
+    project-id: ${GCP_PROJECT_ID:cloudpulse-ai-poc}
+    emulator-host: ${PUBSUB_EMULATOR_HOST:}
+    publish-topic: inventory-updated
+    orders-subscription: orders-created-inventory-sub
+    consumer-enabled: ${INVENTORY_CONSUMER_ENABLED:true}
+  outbox:
+    poll-interval-ms: 1000
+    batch-size: 50

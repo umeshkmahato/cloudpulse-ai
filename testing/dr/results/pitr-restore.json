@@ -1,0 +1,45 @@
+{
+  "scenario": "pitr-restore",
+  "injected": "production volume 'lost'; restore from base backup + frozen WAL archive into a scratch Postgres (3 disaster instants)",
+  "target_rto_s": 300,
+  "target_rpo_s": 60,
+  "base_backup_s": 4,
+  "archive_timeout_s": 30,
+  "runs": [
+    {
+      "disaster": 1,
+      "restore_s": 4,
+      "production_last_marker": 803,
+      "restored_last_marker": 778,
+      "rows_lost": 25,
+      "data_loss_window_s": 46,
+      "orders_in_production": 51018,
+      "orders_restored": 51018
+    },
+    {
+      "disaster": 2,
+      "restore_s": 3,
+      "production_last_marker": 818,
+      "restored_last_marker": 804,
+      "rows_lost": 14,
+      "data_loss_window_s": 15,
+      "orders_in_production": 51018,
+      "orders_restored": 51018
+    },
+    {
+      "disaster": 3,
+      "restore_s": 3,
+      "production_last_marker": 833,
+      "restored_last_marker": 832,
+      "rows_lost": 1,
+      "data_loss_window_s": 0,
+      "orders_in_production": 51018,
+      "orders_restored": 51018
+    }
+  ],
+  "worst_restore_s": 4,
+  "worst_data_loss_window_s": 46,
+  "worst_rows_lost": 25,
+  "rto_met": true,
+  "rpo_met": true
+}

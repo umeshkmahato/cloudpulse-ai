@@ -1,0 +1,53 @@
+server:
+  port: 8087
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+spring:
+  application:
+    name: identity-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cloudpulse}
+    username: ${POSTGRES_USER:cloudpulse}
+    password: ${POSTGRES_PASSWORD}
+  flyway:
+    schemas: identity
+    default-schema: identity
+    create-schemas: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+cloudpulse:
+  identity:
+    issuer: cloudpulse-identity
+    audience: cloudpulse-api
+    token-ttl-minutes: 30
+    cookie-name: cp_session
+    cookie-secure: ${IDENTITY_COOKIE_SECURE:false}      # true behind HTTPS (GKE ingress); false for http://localhost
+    signing-key-pem: ${IDENTITY_SIGNING_KEY:}           # PKCS#8 PEM from a Secret. Empty = ephemeral key (dev only, single replica, tokens die on restart)
+    users-json: ${IDENTITY_USERS_JSON:[]}               # [{"username":..,"bcrypt":..,"roles":[..]}] from a Secret: hashes only, never plaintext
+    max-failures: 5               # per account
+    max-failures-per-ip: 30       # per source IP (higher: many users can share one NAT/egress IP)
+    lockout-minutes: 5
+    # Authorization policy (first match wins, default DENY). Evaluated by the gateway through auth_request.
+    policy:
+      - { method: GET,  path: "^/(ops-api|orders-api|inventory-api|assistant-api|remediation-api)/api/.*", role: VIEWER }
+      - { method: POST, path: "^/assistant-api/api/v1/assistant/ask$", role: VIEWER }
+      - { method: POST, path: "^/orders-api/api/v1/orders$", role: OPERATOR }
+      - { method: POST, path: "^/remediation-api/api/v1/remediations/[0-9a-fA-F-]{36}/(approve|reject)$", role: OPERATOR }
+      - { method: POST, path: "^/remediation-api/api/v1/remediation/kill-switch$", role: ADMIN }
+      - { method: POST, path: "^/ops-api/api/v1/telemetry/metrics$", role: ADMIN }
+      - { method: PUT,  path: "^/inventory-api/api/v1/inventory/[A-Za-z0-9._-]+$", role: ADMIN }

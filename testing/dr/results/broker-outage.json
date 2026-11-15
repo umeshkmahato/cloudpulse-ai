@@ -1,0 +1,22 @@
+{
+  "scenario": "broker-outage",
+  "target_rto_s": 300,
+  "target_rpo_s": 60,
+  "write_outage_s": 0,
+  "write_failed_requests": 0,
+  "write_availability_pct_during_fault": 100.0,
+  "write_worst_latency_s": 0.14,
+  "read_worst_latency_s": 0.14,
+  "read_outage_s": 0,
+  "read_failed_requests": 0,
+  "read_availability_pct_during_fault": 100.0,
+  "orders_acknowledged": 138,
+  "acknowledged_orders_lost": 0,
+  "injected": "pubsub-emulator scaled to 0 for 60 s, then restored (+ topic re-creation, emulator-only)",
+  "outbox_events_waiting_at_peak": 30,
+  "outbox_events_still_unpublished": 0,
+  "pending_order_catchup_s": 1,
+  "broker_back_to_catchup_s": 63,
+  "rto_met": true,
+  "rpo_met": true
+}
