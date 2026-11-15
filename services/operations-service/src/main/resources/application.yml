@@ -1,0 +1,71 @@
+server:
+  port: 8083
+  shutdown: graceful
+
+spring:
+  application:
+    name: operations-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cloudpulse}
+    username: ${POSTGRES_USER:cloudpulse}
+    password: ${POSTGRES_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: operations
+  flyway:
+    schemas: operations
+    default-schema: operations
+    create-schemas: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+cloudpulse:
+  pubsub:
+    project-id: ${GCP_PROJECT_ID:cloudpulse-ai-poc}
+    emulator-host: ${PUBSUB_EMULATOR_HOST:}
+    metrics-topic: application-metrics
+    metrics-subscription: application-metrics-ops-sub
+    alerts-topic: infrastructure-alerts
+    consumer-enabled: ${OPERATIONS_CONSUMER_ENABLED:true}
+  health:
+    # Static, documented thresholds (Phase 5). Phase 9 replaces these with baselines + EWMA.
+    stale-after-seconds: 120
+    cpu-degraded-pct: 85
+    error-rate-degraded-pct: 5
+    latency-degraded-ms: 1000
+  detection:
+    enabled: ${DETECTION_ENABLED:true}
+    interval-ms: 10000
+    baseline-window-minutes: 60
+    baseline-gap-seconds: 180
+    min-baseline-samples: 30
+    min-baseline-span-minutes: 5
+    current-window-seconds: 90
+    current-samples: 3
+    ewma-alpha: 0.3
+    ewma-l: 3.0
+    z-threshold: 3.0
+    min-relative-deviation: 0.2
+    forecast-min-samples: 8
+    forecast-window-minutes: 5
+    forecast-target-pct: 95
+    forecast-horizon-minutes: 30
+    forecast-min-r2: 0.6
+    incident-min-risk: 40
+    resolve-after-clean-evaluations: 6
+    stale-seconds: 120

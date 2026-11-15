@@ -1,0 +1,65 @@
+server:
+  port: 8086
+  shutdown: graceful
+
+spring:
+  application:
+    name: remediation-controller
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cloudpulse}
+    username: ${POSTGRES_USER:cloudpulse}
+    password: ${POSTGRES_PASSWORD}
+  flyway:
+    schemas: remediation
+    default-schema: remediation
+    create-schemas: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+cloudpulse:
+  pubsub:
+    project-id: ${GCP_PROJECT_ID:cloudpulse-ai-poc}
+    emulator-host: ${PUBSUB_EMULATOR_HOST:}
+    events-topic: remediation-events
+  remediation:
+    # dry-run: decisions, approvals, audit and monitoring all run, but NOTHING is changed in Kubernetes.
+    # enforce: the allow-listed scale action is really executed (needs the RBAC from kubernetes/base/rbac.yaml).
+    mode: ${REMEDIATION_MODE:dry-run}
+    poll-interval-ms: 10000
+    operations-base-url: ${OPERATIONS_BASE_URL:http://localhost:8083}
+    namespace: ${K8S_NAMESPACE:cloudpulse}
+    jwt:                                  # approvals need a valid identity-service token with the right role
+      issuer: cloudpulse-identity
+      audience: cloudpulse-api
+      jwks-url: ${IDENTITY_JWKS_URL:http://localhost:8087/auth/jwks}
+    proposal-ttl-minutes: 15
+    monitor-window-minutes: 5
+    cooldown-minutes: 10                  # no second scale of the same deployment within this window
+    max-actions-per-hour: ${REMEDIATION_MAX_ACTIONS_PER_HOUR:3}
+    db-saturation-block-pct: 85           # scaling out can worsen DB connection exhaustion: never auto-approve then
+    # THE ALLOW-LIST. Anything not listed here can never be touched. Bounds mirror the HPA min/max.
+    targets:
+      order-service:      { min-replicas: 2, max-replicas: 6, max-step: 2 }
+      inventory-service:  { min-replicas: 1, max-replicas: 4, max-step: 2 }
+      operations-service: { min-replicas: 1, max-replicas: 3, max-step: 1 }
+    # Automated policy is OFF by default: every action then needs a human approval.
+    policy:
+      auto-approve: ${REMEDIATION_AUTO_APPROVE:false}
+      name: scale-out-on-critical-cpu-v1
+      services: [order-service]
+      min-risk: 80
+    k8s:
+      api-url: https://kubernetes.default.svc
+      token-path: /var/run/secrets/kubernetes.io/serviceaccount/token
+      ca-path: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
