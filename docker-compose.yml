@@ -1,0 +1,75 @@
+# CloudPulse AI - local development infrastructure (zero cloud cost).
+# Usage: cp .env.example .env && docker compose up -d
+name: cloudpulse
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cloudpulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-cloudpulse}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infrastructure/local/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cloudpulse} -d ${POSTGRES_DB:-cloudpulse}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: >
+      gcloud beta emulators pubsub start
+      --project=${GCP_PROJECT_ID:-cloudpulse-ai-poc} --host-port=0.0.0.0:8085
+    ports: ["127.0.0.1:8085:8085"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8085/ >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pubsub-init:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      pubsub-emulator: { condition: service_healthy }
+    environment:
+      PUBSUB_HOST: pubsub-emulator:8085
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-cloudpulse-ai-poc}
+    volumes: ["./scripts/pubsub-init.sh:/init.sh:ro"]
+    entrypoint: ["sh", "/init.sh"]
+    restart: "no"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./infrastructure/local/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["127.0.0.1:9090:9090"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin-local-only}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./infrastructure/local/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [prometheus]
+
+volumes:
+  pgdata:
+  grafana-data:

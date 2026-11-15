@@ -1,0 +1,138 @@
+include /tmp/resolver.conf;
+
+limit_req_zone $binary_remote_addr zone=login:2m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=api:5m rate=20r/s;
+
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    server_tokens off;
+    client_max_body_size 64k;
+
+    include /etc/nginx/security-headers.conf;
+
+    location = /healthz { access_log off; return 200 "ok\n"; }
+
+    # ---- authentication endpoints (public; login is rate limited at the edge and again inside identity-service)
+    location = /auth/login {
+        limit_req zone=login burst=5 nodelay;
+        limit_req_status 429;
+        set $idp http://identity-service.${K8S_NAMESPACE}.svc.cluster.local:8087;
+        rewrite ^(.*)$ /auth/login break;
+        proxy_pass $idp;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Correlation-ID $request_id;
+    }
+    location ~ ^/auth/(logout|me)$ {
+        set $idp http://identity-service.${K8S_NAMESPACE}.svc.cluster.local:8087;
+        proxy_pass $idp;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Correlation-ID $request_id;
+    }
+    location /auth/ { return 404; }                            # jwks/verify/audit are internal only
+
+    # ---- policy decision point for every API call (nginx auth_request -> identity-service)
+    location = /_auth {
+        internal;
+        set $idp http://identity-service.${K8S_NAMESPACE}.svc.cluster.local:8087/auth/verify;
+        proxy_pass $idp;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header X-Original-Method $request_method;
+        proxy_set_header X-CSRF $http_x_cloudpulse_csrf;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header Authorization $http_authorization;
+    }
+
+    location /ops-api/ {
+        auth_request /_auth;                                   # identity-service decides: 401 / 403 / allow
+        auth_request_set $auth_user $upstream_http_x_auth_user;
+        auth_request_set $auth_token $upstream_http_x_auth_token;
+        limit_req zone=api burst=40 nodelay;
+        set $upstream http://operations-service.${K8S_NAMESPACE}.svc.cluster.local:8083;
+        rewrite ^/ops-api/(.*)$ /$1 break;
+        proxy_pass $upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;         # never trust a client-supplied value
+        proxy_set_header X-Correlation-ID $request_id;
+        proxy_set_header X-Auth-User $auth_user;
+        proxy_set_header Authorization "Bearer $auth_token";   # the browser only holds an HttpOnly cookie; backends get the verified JWT
+        proxy_set_header Cookie "";
+        proxy_read_timeout 15s;
+    }
+
+    location /orders-api/ {
+        auth_request /_auth;                                   # identity-service decides: 401 / 403 / allow
+        auth_request_set $auth_user $upstream_http_x_auth_user;
+        auth_request_set $auth_token $upstream_http_x_auth_token;
+        limit_req zone=api burst=40 nodelay;
+        set $upstream http://order-service.${K8S_NAMESPACE}.svc.cluster.local:8081;
+        rewrite ^/orders-api/(.*)$ /$1 break;
+        proxy_pass $upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;         # never trust a client-supplied value
+        proxy_set_header X-Correlation-ID $request_id;
+        proxy_set_header X-Auth-User $auth_user;
+        proxy_set_header Authorization "Bearer $auth_token";   # the browser only holds an HttpOnly cookie; backends get the verified JWT
+        proxy_set_header Cookie "";
+        proxy_read_timeout 15s;
+    }
+
+    location /inventory-api/ {
+        auth_request /_auth;                                   # identity-service decides: 401 / 403 / allow
+        auth_request_set $auth_user $upstream_http_x_auth_user;
+        auth_request_set $auth_token $upstream_http_x_auth_token;
+        limit_req zone=api burst=40 nodelay;
+        set $upstream http://inventory-service.${K8S_NAMESPACE}.svc.cluster.local:8082;
+        rewrite ^/inventory-api/(.*)$ /$1 break;
+        proxy_pass $upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;         # never trust a client-supplied value
+        proxy_set_header X-Correlation-ID $request_id;
+        proxy_set_header X-Auth-User $auth_user;
+        proxy_set_header Authorization "Bearer $auth_token";   # the browser only holds an HttpOnly cookie; backends get the verified JWT
+        proxy_set_header Cookie "";
+        proxy_read_timeout 15s;
+    }
+
+    location /assistant-api/ {
+        auth_request /_auth;                                   # identity-service decides: 401 / 403 / allow
+        auth_request_set $auth_user $upstream_http_x_auth_user;
+        auth_request_set $auth_token $upstream_http_x_auth_token;
+        limit_req zone=api burst=40 nodelay;
+        set $upstream http://ai-incident-assistant.${K8S_NAMESPACE}.svc.cluster.local:8085;
+        rewrite ^/assistant-api/(.*)$ /$1 break;
+        proxy_pass $upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;         # never trust a client-supplied value
+        proxy_set_header X-Correlation-ID $request_id;
+        proxy_set_header X-Auth-User $auth_user;
+        proxy_set_header Authorization "Bearer $auth_token";   # the browser only holds an HttpOnly cookie; backends get the verified JWT
+        proxy_set_header Cookie "";
+        proxy_read_timeout 15s;
+    }
+
+    location /remediation-api/ {
+        auth_request /_auth;                                   # identity-service decides: 401 / 403 / allow
+        auth_request_set $auth_user $upstream_http_x_auth_user;
+        auth_request_set $auth_token $upstream_http_x_auth_token;
+        limit_req zone=api burst=40 nodelay;
+        set $upstream http://remediation-controller.${K8S_NAMESPACE}.svc.cluster.local:8086;
+        rewrite ^/remediation-api/(.*)$ /$1 break;
+        proxy_pass $upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;         # never trust a client-supplied value
+        proxy_set_header X-Correlation-ID $request_id;
+        proxy_set_header X-Auth-User $auth_user;
+        proxy_set_header Authorization "Bearer $auth_token";   # the browser only holds an HttpOnly cookie; backends get the verified JWT
+        proxy_set_header Cookie "";
+        proxy_read_timeout 15s;
+    }
+
+    location /assets/ { include /etc/nginx/security-headers.conf; expires 1y; add_header Cache-Control "public, immutable"; }
+    location / { include /etc/nginx/security-headers.conf; try_files $uri /index.html; add_header Cache-Control "no-cache"; }
+}

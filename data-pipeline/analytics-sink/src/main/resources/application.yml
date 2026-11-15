@@ -1,0 +1,41 @@
+server:
+  port: 8084
+  shutdown: graceful
+
+spring:
+  application:
+    name: analytics-sink
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cloudpulse}
+    username: ${POSTGRES_USER:cloudpulse}
+    password: ${POSTGRES_PASSWORD}
+  flyway:
+    schemas: analytics
+    default-schema: analytics
+    create-schemas: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+cloudpulse:
+  sink:
+    target: ${SINK_TARGET:postgres}     # postgres (local) | bigquery (cloud; NOT yet verified against real BigQuery)
+    bigquery-dataset: cloudpulse_analytics
+    consumer-enabled: ${SINK_CONSUMER_ENABLED:true}
+    subscriptions:
+      - orders-created-analytics-sub
+      - inventory-updated-analytics-sub
+      - application-metrics-analytics-sub
+  pubsub:
+    project-id: ${GCP_PROJECT_ID:cloudpulse-ai-poc}
+    emulator-host: ${PUBSUB_EMULATOR_HOST:}

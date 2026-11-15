@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cloudpulse.local/schemas/alert.raised.v1.json",
+  "title": "alert.raised v1",
+  "type": "object",
+  "required": [
+    "eventId",
+    "eventType",
+    "eventVersion",
+    "occurredAt",
+    "correlationId",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "eventType": {
+      "const": "alert.raised"
+    },
+    "eventVersion": {
+      "const": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "source": {
+      "const": "operations-service"
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "incidentId",
+        "service",
+        "kind",
+        "severity",
+        "riskScore",
+        "state",
+        "summary",
+        "affectedServices",
+        "synthetic"
+      ],
+      "properties": {
+        "incidentId": {
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "DETECTED",
+            "FORECAST"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "CRITICAL"
+          ]
+        },
+        "riskScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "state": {
+          "enum": [
+            "OPENED",
+            "ESCALATED",
+            "DEESCALATED",
+            "RESOLVED"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "affectedServices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cloudpulse.local/schemas/remediation.event.v1.json",
+  "title": "remediation.event v1",
+  "type": "object",
+  "required": [
+    "eventId",
+    "eventType",
+    "eventVersion",
+    "occurredAt",
+    "correlationId",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "eventType": {
+      "const": "remediation.event"
+    },
+    "eventVersion": {
+      "const": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "source": {
+      "const": "remediation-controller"
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "remediationId",
+        "incidentId",
+        "service",
+        "action",
+        "deployment",
+        "fromReplicas",
+        "toReplicas",
+        "status",
+        "actor",
+        "detail",
+        "synthetic"
+      ],
+      "properties": {
+        "remediationId": {
+          "type": "string"
+        },
+        "incidentId": {
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "SCALE_DEPLOYMENT"
+          ]
+        },
+        "deployment": {
+          "type": "string"
+        },
+        "fromReplicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toReplicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "enum": [
+            "PROPOSED",
+            "APPROVED",
+            "EXECUTING",
+            "MONITORING",
+            "RECOVERED",
+            "NOT_RECOVERED",
+            "REJECTED",
+            "EXPIRED",
+            "BLOCKED",
+            "FAILED"
+          ]
+        },
+        "actor": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}
