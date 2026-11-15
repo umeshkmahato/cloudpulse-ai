@@ -32,7 +32,7 @@
       <dependency>
         <groupId>com.google.guava</groupId>
         <artifactId>guava</artifactId>
-        <version>33.7.2-jre</version>   <!-- DoS fix (CVE-2026-102554); pulled in by google-auth-library -->
+        <version>33.8.0-jre</version>   <!-- DoS fix (CVE-2026-102554); pulled in by google-auth-library -->
       </dependency>
     </dependencies>
   </dependencyManagement>
