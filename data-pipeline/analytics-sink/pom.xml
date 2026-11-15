@@ -31,7 +31,7 @@
       <dependency>
         <groupId>com.google.guava</groupId>
         <artifactId>guava</artifactId>
-        <version>33.7.2-jre</version>   <!-- ahead of the Google BOM: DoS fix (CVE-2026-102554) -->
+        <version>33.8.0-jre</version>   <!-- ahead of the Google BOM: DoS fix (CVE-2026-102554) -->
       </dependency>
       <dependency>
         <groupId>com.google.cloud</groupId>
