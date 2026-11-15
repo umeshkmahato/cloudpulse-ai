@@ -26,7 +26,7 @@ jobs:
           - { name: identity-service, dir: services/identity-service }
           - { name: dashboard, dir: frontend/operations-dashboard }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { ref: "${{ inputs.ref }}" }
       - uses: google-github-actions/auth@v2
         with:
