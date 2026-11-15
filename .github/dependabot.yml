@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - { package-ecosystem: maven, directory: "/services/order-service", schedule: { interval: weekly } }
+  - { package-ecosystem: maven, directory: "/services/inventory-service", schedule: { interval: weekly } }
+  - { package-ecosystem: maven, directory: "/services/operations-service", schedule: { interval: weekly } }
+  - { package-ecosystem: maven, directory: "/services/ai-incident-assistant", schedule: { interval: weekly } }
+  - { package-ecosystem: maven, directory: "/services/remediation-controller", schedule: { interval: weekly } }
+  - { package-ecosystem: maven, directory: "/services/identity-service", schedule: { interval: weekly } }
+  - { package-ecosystem: maven, directory: "/data-pipeline/analytics-sink", schedule: { interval: weekly } }
+  - { package-ecosystem: terraform, directory: "/infrastructure/terraform/environments/dev", schedule: { interval: weekly } }
+  - { package-ecosystem: terraform, directory: "/infrastructure/terraform/environments/staging", schedule: { interval: weekly } }
+  - { package-ecosystem: terraform, directory: "/infrastructure/terraform/environments/prod", schedule: { interval: weekly } }
+  - { package-ecosystem: npm, directory: "/frontend/operations-dashboard", schedule: { interval: weekly } }
+  - { package-ecosystem: github-actions, directory: "/", schedule: { interval: weekly } }
+  - { package-ecosystem: docker, directory: "/services/order-service", schedule: { interval: weekly } }
