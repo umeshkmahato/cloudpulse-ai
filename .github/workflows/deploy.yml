@@ -1,106 +1,45 @@
-# CI: runs on every PR and push to main. No cloud credentials are used or needed.
-name: ci
+# Deploy a released SHA to an environment. The `environment:` key makes GitHub require the reviewers configured for it
+# (staging: 1 reviewer, production: 2 reviewers + wait timer). Disabled until GCP_ENABLED=true.
+name: deploy
 on:
-  pull_request:
-  push:
-    branches: [main]
-permissions:
-  contents: read
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
+  workflow_dispatch:
+    inputs:
+      environment: { type: choice, options: [staging, production], required: true }
+      sha: { description: "released commit SHA (must exist in the registry)", required: true }
+permissions: { contents: read, id-token: write }
+concurrency: { group: "deploy-${{ inputs.environment }}", cancel-in-progress: false }
 jobs:
-  java:
+  deploy:
+    if: vars.GCP_ENABLED == 'true'
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        module:
-          - services/order-service
-          - services/inventory-service
-          - services/operations-service
-          - services/ai-incident-assistant
-          - services/remediation-controller
-          - services/identity-service
-          - data-pipeline/analytics-sink
+    environment: ${{ inputs.environment }}   # approval gate
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: "21", cache: maven }
-      - run: mvn -B -q verify
-        working-directory: ${{ matrix.module }}
-
-  dashboard:
-    runs-on: ubuntu-24.04
-    defaults: { run: { working-directory: frontend/operations-dashboard } }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: "20", cache: npm, cache-dependency-path: frontend/operations-dashboard/package-lock.json }
-      - run: npm ci
-      - run: npx tsc -b --noEmit
-      - run: npx vitest run
-      - run: npm run build
-
-  iac:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: "1.9.8" }
-      - name: terraform fmt + validate (no backend, no credentials)
+        with: { ref: "${{ inputs.sha }}" }
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: "${{ vars.GCP_WIF_PROVIDER }}", service_account: "${{ vars.GCP_DEPLOYER_SA }}" }
+      - uses: google-github-actions/get-gke-credentials@v2
+        with: { cluster_name: "${{ vars.GKE_CLUSTER }}", location: "${{ vars.GCP_REGION }}" }
+      - name: verify image signatures before anything is applied
         run: |
-          terraform -chdir=infrastructure/terraform fmt -check -recursive
-          for env in dev staging prod bootstrap; do
-            d=infrastructure/terraform/environments/$env; [ -d "$d" ] || d=infrastructure/terraform/$env
-            [ -d "$d" ] || continue
-            terraform -chdir="$d" init -backend=false -input=false >/dev/null
-            terraform -chdir="$d" validate
+          for i in order-service inventory-service operations-service analytics-sink ai-incident-assistant remediation-controller identity-service dashboard; do
+            cosign verify --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release.yml@.*" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/cloudpulse/$i:${{ inputs.sha }}" >/dev/null
           done
-      - name: kustomize renders (local and gke overlays)
-        run: |
-          kubectl kustomize kubernetes/overlays/local >/dev/null
-          kubectl kustomize kubernetes/overlays/gke >/dev/null
-
-  security:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: install trivy
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/v0.58.2/contrib/install.sh | sh -s -- -b /usr/local/bin v0.58.2
-      - name: dependency, IaC and secret scans (fail on HIGH/CRITICAL)
-        run: scripts/security-scan.sh deps && scripts/security-scan.sh iac && scripts/security-scan.sh secrets
-
-  images:
-    needs: [java, dashboard]
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: install trivy
-        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/v0.58.2/contrib/install.sh | sh -s -- -b /usr/local/bin v0.58.2
-      - name: build all images (same tag the scan and the kind cluster use)
-        run: |
-          for i in services/order-service services/inventory-service services/operations-service data-pipeline/analytics-sink \
-                   services/ai-incident-assistant services/remediation-controller services/identity-service frontend/operations-dashboard; do
-            n=$(basename $i); [ $n = operations-dashboard ] && n=dashboard
-            docker build -q -t cloudpulse/$n:0.1.0 $i >/dev/null
+      - name: record the currently running revision (rollback point)
+        run: kubectl -n cloudpulse get deploy -o jsonpath='{range .items[*]}{.metadata.name}={.spec.template.spec.containers[0].image}{"\n"}{end}' | tee previous-images.txt
+      - run: |
+          cd kubernetes/overlays/gke
+          for i in order-service inventory-service operations-service analytics-sink ai-incident-assistant remediation-controller identity-service dashboard; do
+            kustomize edit set image "cloudpulse/$i=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/cloudpulse/$i:${{ inputs.sha }}"
           done
-      - name: scan the built images (fail on HIGH/CRITICAL; images are not pushed)
-        run: scripts/security-scan.sh images
-
-  cluster-e2e:
-    # Spins up kind and runs the same checks used locally. Slower: only on main and on demand.
-    if: github.event_name == 'push'
-    needs: [java, dashboard, iac, security]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-      - uses: helm/kind-action@v1
-        with: { install_only: true }
-      - run: scripts/k8s-up.sh
-      - run: scripts/k8s-verify.sh
-      - run: scripts/k8s-security-verify.sh
-      - run: scripts/k8s-remediation-e2e.sh
+          kubectl apply -k .
+      - name: wait for rollouts; roll back automatically on failure
+        run: |
+          for d in order-service inventory-service operations-service analytics-sink ai-incident-assistant remediation-controller identity-service dashboard; do
+            kubectl -n cloudpulse rollout status deploy/$d --timeout=300s || { echo "::error::$d failed; rolling back"; kubectl -n cloudpulse rollout undo deploy/$d; exit 1; }
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: previous-images, path: previous-images.txt }
