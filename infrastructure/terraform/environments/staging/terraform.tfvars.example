@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (git-ignored). No secrets belong here.
+project_id         = "cloudpulse-ai-staging"
+region             = "asia-south2"
+billing_account_id = "XXXXXX-XXXXXX-XXXXXX"
+alert_email        = "you@example.com"
+budget_amount      = 10
+budget_currency    = "USD"
+
+# Cost gates - leave false until the plan + cost estimate are reviewed and approved.
+enable_gke       = false
+enable_cloud_sql = false
+enable_cloud_nat = false
+enable_kms       = false

@@ -1,0 +1,10 @@
+# NOT included in the kustomization on purpose: an external HTTP(S) load balancer BILLS WHILE IT EXISTS.
+# Rename to ingress.yaml and add it to resources only after cost approval. Prefer IAP/Cloud Armor in front (Phase 13).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cloudpulse
+  annotations:
+    kubernetes.io/ingress.class: gce
+spec:
+  defaultBackend: { service: { name: dashboard, port: { number: 8080 } } }

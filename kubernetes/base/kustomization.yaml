@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cloudpulse
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - networkpolicies.yaml
+  - apps/order-service.yaml
+  - apps/inventory-service.yaml
+  - apps/operations-service.yaml
+  - apps/analytics-sink.yaml
+  - apps/ai-incident-assistant.yaml
+  - apps/remediation-controller.yaml
+  - apps/identity-service.yaml
+  - apps/dashboard.yaml
+configMapGenerator:
+  - name: cloudpulse-config
+    options: { disableNameSuffixHash: true }     # restart pods after changing it (kubectl rollout restart)
+    literals:
+      - GCP_PROJECT_ID=cloudpulse-ai-poc
+      - POSTGRES_USER=cloudpulse
+      - DB_URL=jdbc:postgresql://CHANGE-ME:5432/cloudpulse     # set by each overlay
+      - OPERATIONS_BASE_URL=http://operations-service:8083
+      - SPRING_PROFILES_ACTIVE=default
+      # Connection budget: total = sum(replicas x pool). HPA scale-out multiplies connections, so pools are small (default 10 exhausted Postgres at 100).
+      - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=5
+      - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1

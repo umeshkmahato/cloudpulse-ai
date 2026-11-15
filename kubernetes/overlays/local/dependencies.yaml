@@ -1,0 +1,124 @@
+# In-cluster stand-ins for Cloud SQL and Pub/Sub. LOCAL ONLY (the gke overlay uses the managed services).
+# Local stand-in for a backup bucket. In the cloud this is Cloud SQL automated backups + PITR (Terraform cloud-sql module) with
+# copies in another region; a PVC in the same cluster is NOT disaster recovery, it only lets us rehearse the procedure.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: pg-backup }
+spec: { accessModes: ["ReadWriteOnce"], resources: { requests: { storage: 2Gi } } }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: postgres }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: postgres, labels: { app.kubernetes.io/name: postgres, app.kubernetes.io/part-of: cloudpulse } }
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: postgres } }
+  template:
+    metadata: { labels: { app.kubernetes.io/name: postgres, app.kubernetes.io/part-of: cloudpulse } }
+    spec:
+      serviceAccountName: postgres
+      automountServiceAccountToken: false
+      nodeSelector: { topology.kubernetes.io/zone: zone-a }    # stateful stand-ins live in zone-a so drain drills on zone-b never wipe them
+      securityContext: { runAsNonRoot: true, runAsUser: 70, runAsGroup: 70, fsGroup: 70, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-c"
+            - "max_connections=200"                 # 9+ JVM pods x pool 5; Cloud SQL equivalent is set via database_flags
+            # Point-in-time recovery: continuous WAL archiving (a segment is shipped at least every 30 s => RPO <= ~30 s for a lost disk)
+            - "-c"
+            - "archive_mode=on"
+            - "-c"
+            - "archive_timeout=30"
+            - "-c"
+            - "archive_command=mkdir -p /backup/wal && test ! -f /backup/wal/%f && cp %p /backup/wal/%f"
+          ports: [ { name: pg, containerPort: 5432 } ]
+          env:
+            - { name: POSTGRES_USER, value: cloudpulse }
+            - { name: POSTGRES_DB, value: cloudpulse }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: cloudpulse-db, key: password } }
+          resources: { requests: { cpu: 100m, memory: 192Mi }, limits: { cpu: "1", memory: 512Mi } }
+          readinessProbe: { exec: { command: ["pg_isready", "-U", "cloudpulse", "-d", "cloudpulse"] }, periodSeconds: 5 }
+          livenessProbe: { exec: { command: ["pg_isready", "-U", "cloudpulse", "-d", "cloudpulse"] }, periodSeconds: 15, failureThreshold: 5 }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: run, mountPath: /var/run/postgresql }
+            - { name: backup, mountPath: /backup }
+      volumes:
+        - { name: run, emptyDir: {} }
+        - { name: backup, persistentVolumeClaim: { claimName: pg-backup } }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec: { accessModes: ["ReadWriteOnce"], resources: { requests: { storage: 1Gi } } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgres }
+spec: { selector: { app.kubernetes.io/name: postgres }, ports: [ { name: pg, port: 5432, targetPort: pg } ] }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: pubsub-emulator }
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: pubsub-emulator, labels: { app.kubernetes.io/name: pubsub-emulator, app.kubernetes.io/part-of: cloudpulse } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: pubsub-emulator } }
+  template:
+    metadata: { labels: { app.kubernetes.io/name: pubsub-emulator, app.kubernetes.io/part-of: cloudpulse } }
+    spec:
+      serviceAccountName: pubsub-emulator
+      automountServiceAccountToken: false
+      nodeSelector: { topology.kubernetes.io/zone: zone-a }    # the emulator is in-memory: topics vanish if its pod is rescheduled (local only; managed Pub/Sub has no such issue)
+      containers:
+        - name: emulator
+          image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+          imagePullPolicy: IfNotPresent
+          command: ["gcloud", "beta", "emulators", "pubsub", "start", "--project=cloudpulse-ai-poc", "--host-port=0.0.0.0:8085"]
+          ports: [ { name: grpc, containerPort: 8085 } ]
+          resources: { requests: { cpu: 100m, memory: 384Mi }, limits: { cpu: "1", memory: 1Gi } }
+          readinessProbe: { httpGet: { path: /, port: grpc }, periodSeconds: 5, failureThreshold: 20 }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] }, seccompProfile: { type: RuntimeDefault } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: pubsub-emulator }
+spec: { selector: { app.kubernetes.io/name: pubsub-emulator }, ports: [ { name: grpc, port: 8085, targetPort: grpc } ] }
+---
+apiVersion: batch/v1
+kind: Job
+metadata: { name: pubsub-init }
+spec:
+  backoffLimit: 20
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata: { labels: { app.kubernetes.io/name: pubsub-init, app.kubernetes.io/part-of: cloudpulse } }
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, runAsUser: 100, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: init
+          image: curlimages/curl:8.10.1
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "/scripts/pubsub-init.sh"]    # ConfigMap created by scripts/k8s-up.sh from scripts/pubsub-init.sh (single source)
+          env:
+            - { name: PUBSUB_HOST, value: "pubsub-emulator:8085" }
+            - { name: GCP_PROJECT_ID, value: cloudpulse-ai-poc }
+          resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { cpu: 100m, memory: 64Mi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+          volumeMounts: [ { name: scripts, mountPath: /scripts } ]
+      volumes: [ { name: scripts, configMap: { name: pubsub-init-script } } ]

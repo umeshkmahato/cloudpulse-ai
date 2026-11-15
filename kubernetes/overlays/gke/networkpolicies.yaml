@@ -1,0 +1,38 @@
+# GKE data-plane egress. Narrow the CIDRs to the real ranges before applying (terraform outputs).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-apps-egress-data }
+spec:
+  podSelector: { matchExpressions: [ { key: app.kubernetes.io/name, operator: In, values: [order-service, inventory-service, operations-service, analytics-sink, ai-incident-assistant, remediation-controller, identity-service] } ] }
+  policyTypes: [Egress]
+  egress:
+    # Cloud SQL via private services access (the reserved /20 from the cloud-sql module; 10.0.0.0/8 is a placeholder)
+    - to: [ { ipBlock: { cidr: 10.0.0.0/8 } } ]
+      ports: [ { protocol: TCP, port: 5432 } ]
+    # Pub/Sub, Secret Manager, Vertex AI: Google APIs over 443 (prefer Private Google Access + restricted.googleapis.com VIP)
+    - to: [ { ipBlock: { cidr: 0.0.0.0/0, except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16] } } ]
+      ports: [ { protocol: TCP, port: 443 } ]
+    # GKE metadata server (Workload Identity token exchange)
+    - to: [ { ipBlock: { cidr: 169.254.169.252/32 } } ]
+      ports: [ { protocol: TCP, port: 988 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-lb-health-checks-to-dashboard }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: dashboard } }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [ { ipBlock: { cidr: 130.211.0.0/22 } }, { ipBlock: { cidr: 35.191.0.0/16 } } ]   # Google front ends / health checks
+      ports: [ { protocol: TCP, port: 8080 } ]
+---
+# GKE control plane (private cluster master range from the gke module, default 172.16.0.0/28)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-controller-to-kube-api }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: remediation-controller } }
+  policyTypes: [Egress]
+  egress:
+    - to: [ { ipBlock: { cidr: 172.16.0.0/28 } } ]
+      ports: [ { protocol: TCP, port: 443 } ]

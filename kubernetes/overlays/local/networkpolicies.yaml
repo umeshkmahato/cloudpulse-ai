@@ -1,0 +1,76 @@
+# Local data-plane rules: apps may reach Postgres and the Pub/Sub emulator, nothing else may.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-to-postgres }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: postgres } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchExpressions: [ { key: app.kubernetes.io/name, operator: In, values: [order-service, inventory-service, operations-service, analytics-sink, ai-incident-assistant, remediation-controller, identity-service] } ] }
+      ports: [ { protocol: TCP, port: 5432 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-to-pubsub-emulator }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: pubsub-emulator } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchExpressions: [ { key: app.kubernetes.io/name, operator: In, values: [order-service, inventory-service, operations-service, analytics-sink, remediation-controller, pubsub-init] } ] }
+      ports: [ { protocol: TCP, port: 8085 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-apps-egress-data }
+spec:
+  podSelector: { matchExpressions: [ { key: app.kubernetes.io/name, operator: In, values: [order-service, inventory-service, operations-service, analytics-sink, ai-incident-assistant, remediation-controller, identity-service] } ] }
+  policyTypes: [Egress]
+  egress:
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: postgres } } } ]
+      ports: [ { protocol: TCP, port: 5432 } ]
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: pubsub-emulator } } } ]
+      ports: [ { protocol: TCP, port: 8085 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-pubsub-init-egress }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: pubsub-init } }
+  policyTypes: [Egress]
+  egress:
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: pubsub-emulator } } } ]
+      ports: [ { protocol: TCP, port: 8085 } ]
+---
+# The controller is the only workload allowed to reach the Kubernetes API (kind control plane lives on the docker bridge network).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-controller-to-kube-api }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: remediation-controller } }
+  policyTypes: [Egress]
+  egress:
+    - to: [ { ipBlock: { cidr: 172.16.0.0/12 } } ]
+      ports: [ { protocol: TCP, port: 6443 }, { protocol: TCP, port: 443 } ]
+---
+# Synthetic "external client" used by the DR drills (testing/dr). Locally nothing else reaches the gateway except kubectl port-forward.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-dr-probe-to-gateway }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: dashboard } }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [ { podSelector: { matchLabels: { purpose: dr-probe } } } ]
+      ports: [ { protocol: TCP, port: 8080 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-dr-probe-egress }
+spec:
+  podSelector: { matchLabels: { purpose: dr-probe } }
+  policyTypes: [Egress]
+  egress:
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: dashboard } } } ]
+      ports: [ { protocol: TCP, port: 8080 } ]

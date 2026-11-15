@@ -1,0 +1,37 @@
+# Least privilege. Application pods have NO API access (automountServiceAccountToken: false).
+# The remediation controller (Phase 12) is the only workload allowed to touch the API. The HPA owns replica counts, so its only
+# write is raising/restoring minReplicas of three named HPAs (the "capacity floor"). It cannot scale deployments directly, read
+# secrets, exec into pods or touch any other object. No ClusterRoles.
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: remediation-controller, labels: { app.kubernetes.io/part-of: cloudpulse } }
+automountServiceAccountToken: true     # the one workload that needs the token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: { name: remediation-scaler }
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    resourceNames: ["order-service", "inventory-service", "operations-service"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: remediation-scaler }
+subjects: [ { kind: ServiceAccount, name: remediation-controller } ]
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: remediation-scaler }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: { name: operator-readonly }
+rules:
+  - apiGroups: ["", "apps", "autoscaling", "policy"]
+    resources: ["pods", "pods/log", "services", "deployments", "replicasets", "horizontalpodautoscalers", "poddisruptionbudgets", "events"]
+    verbs: ["get", "list", "watch"]

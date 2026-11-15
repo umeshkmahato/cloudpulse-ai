@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudpulse
+  labels:
+    app.kubernetes.io/part-of: cloudpulse
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata: { name: cloudpulse-quota, namespace: cloudpulse }
+spec:
+  hard:
+    pods: "40"
+    requests.cpu: "8"
+    requests.memory: 12Gi
+    limits.cpu: "40"            # DR drill finding: pods stuck Terminating on a dead node still count, so a 16-CPU limit quota blocked their replacements.
+    limits.memory: 40Gi         # Size quotas for at least 2x steady state; requests (which drive scheduling) stay tight.
+---
+apiVersion: v1
+kind: LimitRange
+metadata: { name: cloudpulse-defaults, namespace: cloudpulse }
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 50m, memory: 64Mi }
+      default: { cpu: 500m, memory: 256Mi }

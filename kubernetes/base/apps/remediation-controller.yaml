@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: remediation-controller
+  labels:
+    app.kubernetes.io/name: remediation-controller
+    app.kubernetes.io/part-of: cloudpulse
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }   # zero-downtime rollouts
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: remediation-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: remediation-controller
+        app.kubernetes.io/part-of: cloudpulse
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8086"
+    spec:
+      serviceAccountName: remediation-controller
+      automountServiceAccountToken: true      # only the remediation controller talks to the Kubernetes API
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      tolerations:                           # default is 300 s before pods on a dead node are evicted: far too slow for a 5 min RTO
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 30 }
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 30 }
+      topologySpreadConstraints:             # survive a zone or node loss
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule       # strict zone spread while zones are healthy ...
+          nodeTaintsPolicy: Honor                # ... but a zone whose nodes are tainted unreachable/not-ready stops counting, so pods still schedule
+          nodeAffinityPolicy: Honor
+          matchLabelKeys: [pod-template-hash]    # spread each ReplicaSet on its own, so rolling updates cannot leave pods lopsided
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: remediation-controller }
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: remediation-controller }
+      containers:
+        - name: app
+          image: cloudpulse/remediation-controller:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8086
+          envFrom:
+            - configMapRef: { name: cloudpulse-config }
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: cloudpulse-db, key: password }
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef: { fieldPath: metadata.namespace }
+            - { name: REMEDIATION_MODE, value: enforce }
+            - name: IDENTITY_JWKS_URL
+              value: http://identity-service.$(K8S_NAMESPACE).svc.cluster.local:8087/auth/jwks
+          resources:
+            requests: { cpu: 100m, memory: 320Mi }
+            limits: { cpu: 500m, memory: 640Mi }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 5
+            failureThreshold: 36        # up to 3 min for a cold JVM
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec: { command: ["sleep", "5"] }   # let endpoints drain before SIGTERM
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: remediation-controller
+  labels: { app.kubernetes.io/name: remediation-controller, app.kubernetes.io/part-of: cloudpulse }
+spec:
+  selector: { app.kubernetes.io/name: remediation-controller }
+  ports:
+    - { name: http, port: 8086, targetPort: http }

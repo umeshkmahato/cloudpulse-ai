@@ -1,0 +1,51 @@
+# GKE overlay: AUTHORED AND VALIDATED ONLY. Nothing here has been applied; GKE is a billable resource that needs explicit approval.
+# Placeholders (PROJECT, REGION, CLOUD_SQL_IP, tag) are filled by the CD pipeline (Phase 15).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cloudpulse
+resources:
+  - ../../base
+  - registries.yaml
+  - networkpolicies.yaml
+configMapGenerator:
+  - name: cloudpulse-config
+    behavior: merge
+    options: { disableNameSuffixHash: true }
+    literals:
+      - GCP_PROJECT_ID=cloudpulse-ai-poc
+      # Cloud SQL private IP (module cloud-sql output private_ip). IAM DB auth / Secret Manager replace the password later.
+      - DB_URL=jdbc:postgresql://CLOUD_SQL_PRIVATE_IP:5432/cloudpulse
+images:
+  - { name: cloudpulse/order-service,         newName: asia-south2-docker.pkg.dev/cloudpulse-ai-poc/cloudpulse/order-service,         newTag: "0.1.0" }
+  - { name: cloudpulse/inventory-service,     newName: asia-south2-docker.pkg.dev/cloudpulse-ai-poc/cloudpulse/inventory-service,     newTag: "0.1.0" }
+  - { name: cloudpulse/operations-service,    newName: asia-south2-docker.pkg.dev/cloudpulse-ai-poc/cloudpulse/operations-service,    newTag: "0.1.0" }
+  - { name: cloudpulse/analytics-sink,        newName: asia-south2-docker.pkg.dev/cloudpulse-ai-poc/cloudpulse/analytics-sink,        newTag: "0.1.0" }
+  - { name: cloudpulse/ai-incident-assistant, newName: asia-south2-docker.pkg.dev/cloudpulse-ai-poc/cloudpulse/ai-incident-assistant, newTag: "0.1.0" }
+  - { name: cloudpulse/remediation-controller, newName: asia-south2-docker.pkg.dev/cloudpulse-ai-poc/cloudpulse/remediation-controller, newTag: "0.1.0" }
+  - { name: cloudpulse/identity-service, newName: asia-south2-docker.pkg.dev/cloudpulse-ai-poc/cloudpulse/identity-service, newTag: "0.1.0" }
+  - { name: cloudpulse/dashboard,             newName: asia-south2-docker.pkg.dev/cloudpulse-ai-poc/cloudpulse/dashboard,             newTag: "0.1.0" }
+patches:
+  # Workload Identity: each KSA impersonates its own least-privilege Google SA (created by Terraform module iam).
+  - target: { kind: ServiceAccount, name: order-service }
+    patch: |-
+      - { op: add, path: /metadata/annotations, value: { iam.gke.io/gcp-service-account: "sa-order-service@cloudpulse-ai-poc.iam.gserviceaccount.com" } }
+  - target: { kind: ServiceAccount, name: inventory-service }
+    patch: |-
+      - { op: add, path: /metadata/annotations, value: { iam.gke.io/gcp-service-account: "sa-inventory-service@cloudpulse-ai-poc.iam.gserviceaccount.com" } }
+  - target: { kind: ServiceAccount, name: operations-service }
+    patch: |-
+      - { op: add, path: /metadata/annotations, value: { iam.gke.io/gcp-service-account: "sa-operations-service@cloudpulse-ai-poc.iam.gserviceaccount.com" } }
+  - target: { kind: ServiceAccount, name: analytics-sink }
+    patch: |-
+      - { op: add, path: /metadata/annotations, value: { iam.gke.io/gcp-service-account: "sa-analytics-sink@cloudpulse-ai-poc.iam.gserviceaccount.com" } }
+  - target: { kind: ServiceAccount, name: remediation-controller }
+    patch: |-
+      - { op: add, path: /metadata/annotations, value: { iam.gke.io/gcp-service-account: "sa-remediation-controller@cloudpulse-ai-poc.iam.gserviceaccount.com" } }
+  # Workload Identity needs the pod to reach the metadata server, so those KSAs need their pods to be scheduled normally; no extra change.
+  # HTTPS terminates at the load balancer, so session cookies must carry the Secure flag
+  - target: { kind: Deployment, name: identity-service }
+    patch: |-
+      - { op: replace, path: /spec/template/spec/containers/0/env/3/value, value: "true" }
+  - target: { kind: Deployment, name: dashboard }
+    patch: |-
+      - { op: replace, path: /spec/replicas, value: 2 }

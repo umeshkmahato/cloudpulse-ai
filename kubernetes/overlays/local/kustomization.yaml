@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cloudpulse
+resources:
+  - ../../base
+  - registries.yaml
+  - dependencies.yaml
+  - networkpolicies.yaml
+configMapGenerator:
+  - name: cloudpulse-config
+    behavior: merge
+    options: { disableNameSuffixHash: true }
+    literals:
+      - DB_URL=jdbc:postgresql://postgres:5432/cloudpulse
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+patches:
+  # Everything on the order path runs with 2 replicas so a node/zone loss does not interrupt orders (DR drill, Phase 14).
+  # Off-path services (operations, analytics, assistant, controller) stay single to save laptop memory.
+  - target: { kind: Deployment, name: identity-service }
+    patch: |-
+      - { op: replace, path: /spec/replicas, value: 2 }
+  - target: { kind: Deployment, name: dashboard }
+    patch: |-
+      - { op: replace, path: /spec/replicas, value: 2 }
+  # Postgres and the emulator are not hardened to "restricted": enforce baseline locally, keep warning on restricted
+  - target: { kind: Namespace, name: cloudpulse }
+    patch: |-
+      - { op: replace, path: /metadata/labels/pod-security.kubernetes.io~1enforce, value: baseline }

@@ -1,0 +1,141 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny-all }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-dns }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports: [ { protocol: UDP, port: 53 }, { protocol: TCP, port: 53 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-to-operations-service }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: operations-service } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: dashboard } }
+        - podSelector: { matchLabels: { app.kubernetes.io/name: ai-incident-assistant } }
+        - podSelector: { matchLabels: { app.kubernetes.io/name: remediation-controller } }
+      ports: [ { protocol: TCP, port: 8083 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-to-order-service }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: order-service } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: dashboard } }
+      ports: [ { protocol: TCP, port: 8081 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-to-inventory-service }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: inventory-service } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: dashboard } }
+      ports: [ { protocol: TCP, port: 8082 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-to-ai-incident-assistant }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: ai-incident-assistant } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: dashboard } }
+      ports: [ { protocol: TCP, port: 8085 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-to-remediation-controller }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: remediation-controller } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: dashboard } }
+      ports: [ { protocol: TCP, port: 8086 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-to-identity-service }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: identity-service } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: dashboard } }
+        - podSelector: { matchLabels: { app.kubernetes.io/name: remediation-controller } }
+      ports: [ { protocol: TCP, port: 8087 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-from-remediation-controller }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: remediation-controller } }
+  policyTypes: [Egress]
+  egress:
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: operations-service } } } ]
+      ports: [ { protocol: TCP, port: 8083 } ]
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: identity-service } } } ]
+      ports: [ { protocol: TCP, port: 8087 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-from-dashboard }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: dashboard } }
+  policyTypes: [Egress]
+  egress:
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: order-service } } } ]
+      ports: [ { protocol: TCP, port: 8081 } ]
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: inventory-service } } } ]
+      ports: [ { protocol: TCP, port: 8082 } ]
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: operations-service } } } ]
+      ports: [ { protocol: TCP, port: 8083 } ]
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: ai-incident-assistant } } } ]
+      ports: [ { protocol: TCP, port: 8085 } ]
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: remediation-controller } } } ]
+      ports: [ { protocol: TCP, port: 8086 } ]
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: identity-service } } } ]
+      ports: [ { protocol: TCP, port: 8087 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-from-ai-incident-assistant }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: ai-incident-assistant } }
+  policyTypes: [Egress]
+  egress:
+    - to: [ { podSelector: { matchLabels: { app.kubernetes.io/name: operations-service } } } ]
+      ports: [ { protocol: TCP, port: 8083 } ]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-metrics-scrape }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/part-of: cloudpulse } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions: [ { key: kubernetes.io/metadata.name, operator: In, values: [monitoring, gmp-system] } ]
+      ports: [ { protocol: TCP, port: 8081 }, { protocol: TCP, port: 8082 }, { protocol: TCP, port: 8083 }, { protocol: TCP, port: 8084 }, { protocol: TCP, port: 8085 }, { protocol: TCP, port: 8086 }, { protocol: TCP, port: 8087 } ]
